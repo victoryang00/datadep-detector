@@ -1,6 +1,7 @@
 package edu.gmu.swe.test.datadep;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -9,7 +10,6 @@ import org.junit.After;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import edu.gmu.swe.datadep.DependencyInfo;
 import edu.gmu.swe.datadep.HeapWalker;
 import edu.gmu.swe.datadep.StaticFieldDependency;
 
@@ -181,7 +181,27 @@ public class HeapDataDepITCase {
 		System.out.println(deps);
 		
 	}
-	
+
+
+	@Test
+	public void testMultipleTestsWritingSamePrimitive(){
+		foo = 1;
+		LinkedList<StaticFieldDependency> deps = HeapWalker.walkAndFindDependencies("TestMultipleTestsWritingSamePrimitive", "test1");
+		assertEquals(0, deps.size());
+
+		foo = 2;
+		deps = HeapWalker.walkAndFindDependencies("TestMultipleTestsWritingSamePrimitive", "test2");
+		assertEquals(1, deps.size());
+		StaticFieldDependency dep = deps.getFirst();
+		assertEquals(1, dep.depGen);
+
+		int c = foo;
+		deps = HeapWalker.walkAndFindDependencies("TestMultipleTestsWritingSamePrimitive", "test3");
+		assertEquals(1, deps.size());
+		dep = deps.getFirst();
+		assertEquals(2, dep.depGen);
+	}
+
 	@After
 	public void resetHeapWalker()
 	{

@@ -40,12 +40,48 @@ public class Instrumenter {
 	static String curPath;
 
 	public static boolean isIgnoredClass(String owner) {
-		return owner.startsWith("java/lang/Object") || owner.startsWith("java/lang/Number") || owner.startsWith("java/lang/Comparable") || owner.startsWith("java/lang/ref/SoftReference") || owner.startsWith("java/lang/ref/Reference")
-				|| owner.startsWith("java/lang/ref/FinalizerReference") || owner.startsWith("java/lang/Boolean") || owner.startsWith("java/lang/Character") || owner.startsWith("java/lang/Float") || owner.startsWith("java/lang/Byte") || owner.startsWith("java/lang/Short")
-				|| owner.startsWith("java/lang/Integer") || owner.startsWith("java/lang/StackTraceElement") || (owner.startsWith("edu/gmu/swe/datadep")) || owner.startsWith("sun/awt/image/codec/") || (owner.startsWith("sun/reflect/Reflection"))
-				|| owner.equals("java/lang/reflect/Proxy") || owner.startsWith("sun/reflection/annotation/AnnotationParser") || owner.startsWith("sun/reflect/MethodAccessor") || owner.startsWith("sun/reflect/ConstructorAccessor")
-				|| owner.startsWith("sun/reflect/SerializationConstructorAccessor") || owner.startsWith("sun/reflect/GeneratedMethodAccessor") || owner.startsWith("sun/reflect/GeneratedConstructorAccessor") || owner.startsWith("sun/reflect/GeneratedSerializationConstructor")
-				|| owner.startsWith("java/lang/reflect/Field") || owner.startsWith("sun/reflect/Unsafe") || owner.startsWith("java/lang/Class") || owner.startsWith("java/lang/reflect/Method") || owner.startsWith("java/lang/Double") || owner.startsWith("java/lang/Long");
+		return owner.startsWith("java/lang/Object") || owner.startsWith("java/lang/Number")
+				|| owner.startsWith("java/lang/Comparable") || owner.startsWith("java/lang/ref/SoftReference")
+				|| owner.startsWith("java/lang/ref/Reference") || owner.startsWith("java/lang/ref/FinalizerReference")
+				|| owner.startsWith("java/lang/Boolean") || owner.startsWith("java/lang/Character")
+				|| owner.startsWith("java/lang/Float") || owner.startsWith("java/lang/Byte")
+				|| owner.startsWith("java/lang/Short") || owner.startsWith("java/lang/Integer")
+				|| owner.startsWith("java/lang/StackTraceElement") || (owner.startsWith("edu/gmu/swe/datadep"))
+				|| owner.startsWith("sun/awt/image/codec/") || (owner.startsWith("sun/reflect/Reflection"))
+				|| owner.equals("java/lang/reflect/Proxy")
+				|| owner.startsWith("sun/reflection/annotation/AnnotationParser")
+				|| owner.startsWith("sun/reflect/MethodAccessor") || owner.startsWith("sun/reflect/ConstructorAccessor")
+				|| owner.startsWith("sun/reflect/SerializationConstructorAccessor")
+				|| owner.startsWith("sun/reflect/GeneratedMethodAccessor")
+				|| owner.startsWith("sun/reflect/GeneratedConstructorAccessor")
+				|| owner.startsWith("sun/reflect/GeneratedSerializationConstructor")
+				|| owner.startsWith("java/lang/reflect/Field") || owner.startsWith("sun/reflect/Unsafe")
+				|| owner.startsWith("java/lang/Class") || owner.startsWith("java/lang/reflect/Method")
+				|| owner.startsWith("java/lang/Double") || owner.startsWith("java/lang/Long") //
+				// Ignore string type
+				|| owner.equals("java/lang/String")
+				// Those should be shaded - Anyway it seems that I cannot find
+				// enums for them...
+				// FIXME: Or at least I should be able to configure ignored
+				// class as well - For some reason, this will not work if ran
+				// with DD
+				|| owner.startsWith("com/lexicalscope")//
+				|| owner.contains("shaded")// --> This is important
+				|| owner.startsWith("de/unisaarland/cs/st/cut")//
+				// || owner.startsWith("org/jdom2")//
+				// FIXME: Get those might be tricky, Ignore all the registered
+				// ENUMS
+				|| Enumerations.get().contains(owner.replaceAll("/", ".").replaceAll("\\$[0-9][0-9]*", ""))
+
+		//
+		;
+	}
+
+	public static boolean isMockedClass(String owner) {
+		// Note: there is a specific interface provided by Mockito to identify
+		// mocked classes. We use string instead so we do not include mockito as
+		// dependency to build thi project
+		return owner.contains("EnhancerByMockitoWithCGLIB");
 	}
 
 	static int n = 0;
@@ -83,6 +119,7 @@ public class Instrumenter {
 
 		Options options = new Options();
 		options.addOption(help);
+		options.addOption(new Option("e", "list-enumeration", false, ""));
 
 		CommandLineParser parser = new BasicParser();
 		CommandLine line = null;
@@ -95,23 +132,114 @@ public class Instrumenter {
 			System.err.println(exp.getMessage());
 			return;
 		}
-		if (line.hasOption("help") || line.getArgs().length != 2) {
+
+		// ||
+		if (line.hasOption("help")) {
 			HelpFormatter formatter = new HelpFormatter();
 			formatter.printHelp("java -jar testdepends.jar [OPTIONS] [input] [output]", options);
 			return;
 		}
 
-		PreMain.IS_RUNTIME_INST = false;
-		_main(line.getArgs());
+		if (line.hasOption("list-enumeration")) {
+			PreMain.IS_RUNTIME_INST = false;
+			enum_main(line.getArgs());
+		} else {
+			if (line.getArgs().length != 2) {
+				HelpFormatter formatter = new HelpFormatter();
+				formatter.printHelp("java -jar testdepends.jar [OPTIONS] [input] [output]", options);
+				return;
+			}
+			PreMain.IS_RUNTIME_INST = false;
+			_main(line.getArgs());
+		}
 		System.out.println("Done");
 
 	}
 
 	static File rootOutputDir;
 
-	public static void _main(String[] args) {
-
+	public static void enum_main(String[] args) {
 		String outputFolder = args[1];
+		rootOutputDir = new File(outputFolder);
+		if (!rootOutputDir.exists())
+			rootOutputDir.mkdir();
+		String applicationCP = args[0];
+
+		for (String cpEntry : applicationCP.split(File.pathSeparator)) {
+			if (cpEntry.trim().length() == 0)
+				continue;
+			// Process EACH Entry in the CP
+			System.out.println("Instrumenter.enum_main() PROCESSING " + cpEntry);
+
+			// Setup the class loader
+			final ArrayList<URL> urls = new ArrayList<URL>();
+			Path input = FileSystems.getDefault().getPath(cpEntry);
+			try {
+				if (Files.isDirectory(input)) {
+
+					Files.walkFileTree(input, new FileVisitor<Path>() {
+						public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs)
+								throws IOException {
+							return FileVisitResult.CONTINUE;
+						}
+
+						public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+							if (file.getFileName().toString().endsWith(".jar"))
+								urls.add(file.toUri().toURL());
+							return FileVisitResult.CONTINUE;
+						}
+
+						public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+							return FileVisitResult.CONTINUE;
+						}
+
+						public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+							return FileVisitResult.CONTINUE;
+						}
+					});
+				} else if (cpEntry.endsWith(".jar")) {
+					urls.add(new File(cpEntry).toURI().toURL());
+				}
+			} catch (IOException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+			try {
+				urls.add(new File(cpEntry).toURI().toURL());
+			} catch (MalformedURLException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+
+			File f = new File(cpEntry);
+			if (!f.exists()) {
+				System.err.println("Unable to read path " + cpEntry);
+				System.exit(-1);
+			}
+			if (f.isDirectory())
+				processDirectory(f, rootOutputDir, true);
+			else if (cpEntry.endsWith(".jar") || cpEntry.endsWith(".war"))
+				processJar(f, rootOutputDir);
+			else if (cpEntry.endsWith(".class"))
+				try {
+					processClass(f.getName(), new FileInputStream(f), rootOutputDir);
+				} catch (FileNotFoundException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			else if (cpEntry.endsWith(".zip")) {
+				processZip(f, rootOutputDir);
+			} else {
+				System.err.println("Unknown type for path " + cpEntry);
+				System.exit(-1);
+			}
+		}
+
+	}
+
+	public static void _main(String[] args) {
+		String outputFolder = args[1];
+
 		rootOutputDir = new File(outputFolder);
 		if (!rootOutputDir.exists())
 			rootOutputDir.mkdir();
@@ -316,7 +444,8 @@ public class Instrumenter {
 						} catch (ZipException exxx) {
 							System.out.println("Ignoring exception: " + exxx);
 						}
-					} else if (e.getName().startsWith("META-INF") && (e.getName().endsWith(".SF") || e.getName().endsWith(".RSA"))) {
+					} else if (e.getName().startsWith("META-INF")
+							&& (e.getName().endsWith(".SF") || e.getName().endsWith(".RSA"))) {
 						// don't copy this
 					} else if (e.getName().equals("META-INF/MANIFEST.MF")) {
 						Scanner s = new Scanner(jar.getInputStream(e));
@@ -486,7 +615,8 @@ public class Instrumenter {
 						} catch (ZipException exxxx) {
 							System.out.println("Ignoring exception: " + exxxx.getMessage());
 						}
-					} else if (e.getName().startsWith("META-INF") && (e.getName().endsWith(".SF") || e.getName().endsWith(".RSA"))) {
+					} else if (e.getName().startsWith("META-INF")
+							&& (e.getName().endsWith(".SF") || e.getName().endsWith(".RSA"))) {
 						// don't copy this
 					} else if (e.getName().equals("META-INF/MANIFEST.MF")) {
 						Scanner s = new Scanner(zip.getInputStream(e));

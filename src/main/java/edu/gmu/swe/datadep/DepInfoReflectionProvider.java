@@ -8,6 +8,7 @@ import com.thoughtworks.xstream.converters.reflection.PureJavaReflectionProvider
 
 import edu.gmu.swe.datadep.struct.WrappedPrimitive;
 
+// Not sure when this is called
 public class DepInfoReflectionProvider extends PureJavaReflectionProvider {
 	@Override
 	public void visitSerializableFields(Object object, Visitor visitor) {
@@ -16,14 +17,19 @@ public class DepInfoReflectionProvider extends PureJavaReflectionProvider {
 			if (!fieldModifiersSupported(field)) {
 				continue;
 			}
+			// if(field.getClass().getPackage().getName().contains("java.lang"))
+			// continue;
+
 			validateFieldAccess(field);
 			try {
 				Object value = field.get(object);
-				if(field.getType().isPrimitive()){
-					Field depField = field.getDeclaringClass().getDeclaredField(field.getName()+"__DEPENDENCY_INFO");
+				if (field.getType().isPrimitive() || field.getType().isAssignableFrom(String.class)
+						|| field.getType().isEnum()) {
+
+					Field depField = field.getDeclaringClass().getDeclaredField(field.getName() + "__DEPENDENCY_INFO");
 					depField.setAccessible(true);
 					DependencyInfo dep = (DependencyInfo) depField.get(object);
-					value = new WrappedPrimitive(value,dep);
+					value = new WrappedPrimitive(value, dep);
 				}
 				visitor.visit(field.getName(), field.getType(), field.getDeclaringClass(), value);
 			} catch (IllegalArgumentException e) {
@@ -31,9 +37,17 @@ public class DepInfoReflectionProvider extends PureJavaReflectionProvider {
 			} catch (IllegalAccessException e) {
 				throw new ObjectAccessException("Could not get field " + field.getClass() + "." + field.getName(), e);
 			} catch (NoSuchFieldException e) {
-				throw new ObjectAccessException("Could not get dep info field " + field.getClass() + "." + field.getName(), e);
+				// TODO Not sure why this happens for joda-time but it is
+				// annoying
+				// System.out
+				// .println("[WARNING] Could not get dep info field " +
+				// field.getClass() + "." + field.getName());
+				continue;
+				// throw new ObjectAccessException("Could not get dep info field
+				// " + field.getClass() + "." + field.getName(), e);
 			} catch (SecurityException e) {
-				throw new ObjectAccessException("Could not get dep info field " + field.getClass() + "." + field.getName(), e);
+				throw new ObjectAccessException(
+						"Could not get dep info field " + field.getClass() + "." + field.getName(), e);
 			}
 		}
 	}

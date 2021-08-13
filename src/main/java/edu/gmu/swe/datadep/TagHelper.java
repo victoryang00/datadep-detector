@@ -10,23 +10,34 @@ public final class TagHelper {
 	private static native void _setTag(Object obj, DependencyInfo tag);
 
 	public static DependencyInfo getOrFetchTag(Object obj) {
+
+		if (obj instanceof MockedClass) {
+			System.out.println("WARNING: TagHelper.getOrFetchTag() : " + obj + " instace of Mocked Class !");
+		}
+
 		if (obj instanceof DependencyInstrumented)
 			return ((DependencyInstrumented) obj).getDEPENDENCY_INFO();
 		else if (obj instanceof DependencyInfo)
 			return (DependencyInfo) obj;
-		else if (obj instanceof WrappedPrimitive)
+		/* We need to check for null since String objects might be null ? */
+		else if ((obj instanceof WrappedPrimitive) ) // && obj != null) -> This might raise NPE ?
 			return ((WrappedPrimitive) obj).inf;
+		
 		return getOrInitTag(obj);
 	}
 
 	public static DependencyInfo getOrInitTag(Object obj) {
 		if (engaged == 0)
 			throw new IllegalStateException();
+		
+		// Not sure what this does if obj is null ...
 		DependencyInfo ret = _getTag(obj);
+
 		if (ret == null) {
 			ret = new DependencyInfo();
 			setTag(obj, ret);
 		}
+
 		return ret;
 	}
 

@@ -1,6 +1,6 @@
 package example;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertTrue;
 
 import java.util.List;
 
@@ -22,41 +22,42 @@ public class ExampleDepDetectionITCase {
 		System.out.println("Manually forcing whitelist");
 	}
 
-
 	@Test
-	public void runTests() throws Exception {
-		doTest1();
-		doTest2();
-		doTest3();
-		doTest4();
+	public void testAll(){
+		test1();
+		test2();
+		test3();
+		test4();
 	}
-	
-	public void doTest1(){
+
+//	@Test
+	public void test1(){
 		Example baz = new Example(false, Example.Ex.BAR);
 		System.out.println("test1 "+HeapWalker.walkAndFindDependencies("test1", "test1"));
 	}
 
-	public void doTest2(){
+//	@Test
+	public void test2(){
 		bar = new Example(false, Example.Ex.BAR);
 		System.out.println("test2 "+HeapWalker.walkAndFindDependencies("test2", "test2"));
 
 	}
 
-	public void doTest3(){
+//	@Test
+	public void test3(){
 		bar.isBar();
 		bar.bar();
 		System.out.println("test3 "+HeapWalker.walkAndFindDependencies("test3", "test3"));
 	}
 
-	public void doTest4(){
+//	@Test
+	public void test4(){
 		assertTrue(bar.getBaz().equals(Example.Ex.BAR));
 		bar.setBaz(Example.Ex.FOO);
 		assertTrue(bar.getBaz().equals(Example.Ex.FOO));
 
 		List<StaticFieldDependency> deps = HeapWalker.walkAndFindDependencies("test4", "test4");
-		System.out.println(deps);
 		StaticFieldDependency dep = deps.get(0);
-		System.out.println("Actual: " + dep.depGen);
 		assertTrue("Wrong Generation",dep.depGen == 2);
 		System.out.println("test4 "+deps);
 	}
@@ -81,28 +82,28 @@ public class ExampleDepDetectionITCase {
 			FOO, BAR
 		}
 
-		private boolean bar;
-		private Ex baz;
+		private boolean boo;
+		private Ex baa;
 
 		public Example(boolean bar, Ex baz){
-			this.bar = bar;
-			this.baz = baz;
+			this.boo = bar;
+			this.baa = baz;
 		}
 
 		public Ex getBaz(){
-			return this.baz;
+			return this.baa;
 		}
 
 		public void setBaz(Ex baz){
-			this.baz = baz;
+			this.baa = baz;
 		}
 
 		public boolean isBar(){
-			return bar;
+			return boo;
 		}
 
 		public void bar(){
-			bar = true;
+			boo = true;
 		}
 	}
 
